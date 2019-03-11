@@ -1,0 +1,14 @@
+version: '3'
+services:
+  postgres9:
+    image: ${MYSQL_IMAGE:-postgres:9.6}
+    ports:
+      - ${POSTGRE_HOST:-127.0.0.1}:${POSTGRE_PORT:-5432}:5432
+    environment:
+      - POSTGRES_PASSWORD=password
+  postgres10:
+    image: ${POSTGRE_IMAGE:-postgres:10.7}
+    ports:
+      - ${POSTGRE_HOST:-127.0.0.1}:${POSTGRE_PORT:-5433}:5432
+    environment:
+      - POSTGRES_PASSWORD=password
