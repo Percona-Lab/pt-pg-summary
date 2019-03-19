@@ -15,6 +15,7 @@ var TPL = `{{define "report"}}
 {{ template "global_wait_events" .GlobalWaitEvents }}
 {{ template "connected_clients" .ConnectedClients }}
 {{ template "counters" .Counters }}
+{{ template "table_access" .TableAccess }}
 {{ end }} {{/* end "report" */}}` +
 	`
 {{ define "port_and_datadir" -}}
@@ -85,31 +86,33 @@ There is no Cluster info
 	`{{ define "index_cache_ratios" -}}
 ##### --- Index Cache Hit Ratios ---- ######
 {{ if . -}}
+{{ range $dbname, $value := . }}
+Database: {{ $dbname }}
 +----------------------+------------+
 |      Index Name      |    Ratio   |
 +----------------------+------------+
-{{ range . -}}
 | {{ printf "%-20s" .Name }} |     {{ printf "% 5.2f" .Ratio.Float64 }}  |
-{{end -}}
 +----------------------+------------+
 {{ else -}}
   No stats available
+{{ end -}}
 {{ end -}}
 {{ end -}} {{/* end define */}}
 ` +
 	`{{ define "table_cache_ratios" -}}
 ##### --- Table Cache Hit Ratios ---- ######
 {{ if . -}}
+{{ range $dbname, $value := . -}}
+Database: {{ $dbname }}
 +----------------------+------------+
 |      Index Name      |    Ratio   |
 +----------------------+------------+
-{{ range . -}}
 | {{ printf "%-20s" .Name }} |      {{ printf "%5.2f" .Ratio.Float64 }} |
-{{ end -}}
 +----------------------+------------+
 {{ else -}}
   No stats available
 {{ end -}}
+{{ end }}
 {{- end -}} {{/* end define */}}
 ` +
 	`{{ define "global_wait_events" -}}
@@ -224,4 +227,17 @@ There is no Cluster info
 	"+-----------" +
 	"+-----------" +
 	"+------------+" + "\n" +
-	`{{ end }}`
+	`{{ end }}` +
+
+	`{{ define "table_access" -}}` +
+	`{{ range $dbname, $values := . -}}` +
+	`Database: {{ $dbname }}
+{{ range . -}}
+| {{ printf "%-50s" .Relname }} ` +
+	`| {{ printf "%s" .Relkind }} ` +
+	`| {{ printf "%-30s" .Datname }} ` +
+	`| {{ printf "% 7d" .Count.Int64 }}` +
+	"|\n" +
+	"{{ end }}" +
+	"{{ end -}}" +
+	"{{ end }}"

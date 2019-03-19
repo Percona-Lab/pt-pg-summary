@@ -13,8 +13,8 @@ type TableCacheHitRatio struct {
 	Ratio sql.NullFloat64 // ratio
 }
 
-// GetTableCacheHitRatios runs a custom query, returning results as TableCacheHitRatio.
-func GetTableCacheHitRatios(db XODB) ([]*TableCacheHitRatio, error) {
+// GetTableCacheHitRatio runs a custom query, returning results as TableCacheHitRatio.
+func GetTableCacheHitRatio(db XODB) (*TableCacheHitRatio, error) {
 	var err error
 
 	// sql query
@@ -24,25 +24,11 @@ func GetTableCacheHitRatios(db XODB) ([]*TableCacheHitRatio, error) {
 
 	// run query
 	XOLog(sqlstr)
-	q, err := db.Query(sqlstr)
+	var tchr TableCacheHitRatio
+	err = db.QueryRow(sqlstr).Scan(&tchr.Name, &tchr.Ratio)
 	if err != nil {
 		return nil, err
 	}
-	defer q.Close()
 
-	// load results
-	res := []*TableCacheHitRatio{}
-	for q.Next() {
-		tchr := TableCacheHitRatio{}
-
-		// scan
-		err = q.Scan(&tchr.Name, &tchr.Ratio)
-		if err != nil {
-			return nil, err
-		}
-
-		res = append(res, &tchr)
-	}
-
-	return res, nil
+	return &tchr, nil
 }

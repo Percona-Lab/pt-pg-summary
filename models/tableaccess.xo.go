@@ -20,7 +20,8 @@ func GetTableAccesses(db XODB) ([]*TableAccess, error) {
 	var err error
 
 	// sql query
-	var sqlstr = `SELECT c.relname, c.relkind, b.datname, count(*) FROM pg_locks a ` +
+	var sqlstr = "" +
+		`SELECT c.relname, c.relkind, b.datname, count(*) FROM pg_locks a ` +
 		`JOIN pg_stat_database b ` +
 		`ON a.database=b.datid ` +
 		`JOIN pg_class c ` +

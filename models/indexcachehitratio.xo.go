@@ -13,8 +13,8 @@ type IndexCacheHitRatio struct {
 	Ratio sql.NullFloat64 // ratio
 }
 
-// GetIndexCacheHitRatios runs a custom query, returning results as IndexCacheHitRatio.
-func GetIndexCacheHitRatios(db XODB) ([]*IndexCacheHitRatio, error) {
+// GetIndexCacheHitRatio runs a custom query, returning results as IndexCacheHitRatio.
+func GetIndexCacheHitRatio(db XODB) (*IndexCacheHitRatio, error) {
 	var err error
 
 	// sql query
@@ -24,25 +24,11 @@ func GetIndexCacheHitRatios(db XODB) ([]*IndexCacheHitRatio, error) {
 
 	// run query
 	XOLog(sqlstr)
-	q, err := db.Query(sqlstr)
+	var ichr IndexCacheHitRatio
+	err = db.QueryRow(sqlstr).Scan(&ichr.Name, &ichr.Ratio)
 	if err != nil {
 		return nil, err
 	}
-	defer q.Close()
 
-	// load results
-	res := []*IndexCacheHitRatio{}
-	for q.Next() {
-		ichr := IndexCacheHitRatio{}
-
-		// scan
-		err = q.Scan(&ichr.Name, &ichr.Ratio)
-		if err != nil {
-			return nil, err
-		}
-
-		res = append(res, &ichr)
-	}
-
-	return res, nil
+	return &ichr, nil
 }

@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"fmt"
 	"html/template"
-	"log"
 	"os"
 	"regexp"
 	"strings"
@@ -15,6 +14,7 @@ import (
 	"github.com/alecthomas/kingpin"
 	version "github.com/hashicorp/go-version"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 
 	_ "github.com/lib/pq"
 )
@@ -22,20 +22,26 @@ import (
 type templateData struct {
 	ClusterInfo        []*models.ClusterInfo
 	ConnectedClients   []*models.ConnectedClients
-	Counters           map[models.Name][]*models.Counters
 	DatabaseWaitEvents []*models.DatabaseWaitEvents
 	Databases          []*models.Databases
 	GlobalWaitEvents   []*models.GlobalWaitEvents
-	IndexCacheHitRatio []*models.IndexCacheHitRatio
 	PortAndDatadir     *models.PortAndDatadir
 	SlaveHosts96       []*models.SlaveHosts96
 	SlaveHosts10       []*models.SlaveHosts10
-	TableAccess        map[string][]*models.TableAccess
-	TableCacheHitRatio []*models.TableCacheHitRatio
 	Tablespaces        []*models.Tablespaces
+	Counters           map[models.Name][]*models.Counters    // Counters per database
+	IndexCacheHitRatio map[string]*models.IndexCacheHitRatio // Indexes cache hit ratio per database
+	TableCacheHitRatio map[string]*models.TableCacheHitRatio // Tables cache hit ratio per database
+	TableAccess        map[string][]*models.TableAccess      // Table access per database
 	AllDatabases       bool
 	ServerVersion      *version.Version
 	Sleep              int
+
+	// This is the list of databases from where we should get Table Cache Hit, Index Cache Hits, etc.
+	// This field is being populated on the newData function depending on the cli parameters.
+	// If --databases was not specified, this array will have the list of ALL databases from the GetDatabases
+	// method in the models pkg
+	databases []string
 }
 
 type cliOptions struct {
@@ -80,6 +86,18 @@ func main() {
 		for _, err := range errs {
 			log.Println(err)
 		}
+	}
+
+	for _, dbName := range data.databases {
+		dbConnStr := fmt.Sprintf("%s database=%s", connStr, dbName)
+		conn, err := sql.Open("postgres", dbConnStr)
+		if err != nil {
+			log.Errorf("Cannot connect to the %s database: %s", dbName, err)
+		}
+		if err := collectPerDatabaseInfo(conn, dbName, data); err != nil {
+			log.Errorf("Cannot collect information for the %s database: %s", dbName, err)
+		}
+		conn.Close()
 	}
 
 	masterTmpl, err := template.New("master").Funcs(funcsMap()).Parse(templates.TPL)
@@ -131,38 +149,14 @@ func buildConnString(opts cliOptions) string {
 	return strings.Join(parts, " ")
 }
 
-func getCounters(db models.XODB, ch chan interface{}) {
-	counters, err := models.GetCounters(db)
-	if err != nil {
-		ch <- err
-	} else {
-		ch <- counters
-	}
-}
-
-func waitForCounters(ch chan interface{}) ([]*models.Counters, error) {
-	resp := <-ch
-	if err, ok := resp.(error); ok {
-		return nil, err
-	}
-
-	return resp.([]*models.Counters), nil
-}
-
-func parseServerVersion(v string) (*version.Version, error) {
-	re := regexp.MustCompile(`(\d?\d)(\d\d)(\d\d)`)
-	m := re.FindStringSubmatch(v)
-	if len(m) != 4 {
-		return nil, fmt.Errorf("cannot parse version %s", v)
-	}
-	return version.NewVersion(fmt.Sprintf("%s.%s.%s", m[1], m[2], m[3]))
-}
-
 func newData(db models.XODB, databases []string, sleep int) (*templateData, error) {
 	var err error
 	data := &templateData{
-		Counters: make(map[models.Name][]*models.Counters),
-		Sleep:    sleep,
+		Counters:           make(map[models.Name][]*models.Counters),
+		TableAccess:        make(map[string][]*models.TableAccess),
+		TableCacheHitRatio: make(map[string]*models.TableCacheHitRatio),
+		IndexCacheHitRatio: make(map[string]*models.IndexCacheHitRatio),
+		Sleep:              sleep,
 	}
 
 	if data.Databases, err = models.GetDatabases(db); err != nil {
@@ -170,10 +164,16 @@ func newData(db models.XODB, databases []string, sleep int) (*templateData, erro
 	}
 
 	if len(databases) < 1 {
-		databases = make([]string, 0, len(data.Databases))
-		for _, database := range data.Databases {
-			databases = append(databases, string(database.Datname))
+		data.databases = make([]string, 0, len(data.Databases))
+		allDatabases, err := models.GetAllDatabases(db)
+		if err != nil {
+			return nil, errors.Wrap(err, "cannot get the list of all databases")
 		}
+		for _, database := range allDatabases {
+			data.databases = append(data.databases, string(database.Datname))
+		}
+	} else {
+		copy(data.databases, databases)
 	}
 
 	serverVersion, err := models.GetServerVersion(db)
@@ -186,6 +186,22 @@ func newData(db models.XODB, databases []string, sleep int) (*templateData, erro
 	}
 
 	return data, nil
+}
+
+func collectPerDatabaseInfo(db models.XODB, dbName string, data *templateData) (err error) {
+	if data.TableAccess[dbName], err = models.GetTableAccesses(db); err != nil {
+		return errors.Wrapf(err, "cannot get Table Accesses for the %s database", dbName)
+	}
+
+	if data.TableCacheHitRatio[dbName], err = models.GetTableCacheHitRatio(db); err != nil {
+		return errors.Wrapf(err, "cannot get Table Cache Hit Ratios for the %s database", dbName)
+	}
+
+	if data.IndexCacheHitRatio[dbName], err = models.GetIndexCacheHitRatio(db); err != nil {
+		return errors.Wrapf(err, "cannot get Index Cache Hit Ratio for the %s database", dbName)
+	}
+
+	return nil
 }
 
 func collect(db models.XODB, data *templateData) []error {
@@ -226,16 +242,8 @@ func collect(db models.XODB, data *templateData) []error {
 		errs = append(errs, errors.Wrap(err, "Cannot get Global Wait Events"))
 	}
 
-	if data.IndexCacheHitRatio, err = models.GetIndexCacheHitRatios(db); err != nil {
-		errs = append(errs, errors.Wrap(err, "Cannot get Index Cache Hit Ratios"))
-	}
-
 	if data.PortAndDatadir, err = models.GetPortAndDatadir(db); err != nil {
 		errs = append(errs, errors.Wrap(err, "Cannot get Port and Dir"))
-	}
-
-	if data.TableCacheHitRatio, err = models.GetTableCacheHitRatios(db); err != nil {
-		errs = append(errs, errors.Wrap(err, "Cannot get Table Cache Hit Ratios"))
 	}
 
 	if data.Tablespaces, err = models.GetTablespaces(db); err != nil {
@@ -265,6 +273,32 @@ func collect(db models.XODB, data *templateData) []error {
 	return errs
 }
 
+func getCounters(db models.XODB, ch chan interface{}) {
+	counters, err := models.GetCounters(db)
+	if err != nil {
+		ch <- err
+	} else {
+		ch <- counters
+	}
+}
+
+func waitForCounters(ch chan interface{}) ([]*models.Counters, error) {
+	resp := <-ch
+	if err, ok := resp.(error); ok {
+		return nil, err
+	}
+
+	return resp.([]*models.Counters), nil
+}
+
+func parseServerVersion(v string) (*version.Version, error) {
+	re := regexp.MustCompile(`(\d?\d)(\d\d)(\d\d)`)
+	m := re.FindStringSubmatch(v)
+	if len(m) != 4 {
+		return nil, fmt.Errorf("cannot parse version %s", v)
+	}
+	return version.NewVersion(fmt.Sprintf("%s.%s.%s", m[1], m[2], m[3]))
+}
 func calcCountersDiff(counters map[models.Name][]*models.Counters) {
 	for dbName, c := range counters {
 		diff := &models.Counters{

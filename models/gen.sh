@@ -138,6 +138,7 @@ xo pgsql://postgres:password@127.0.0.1:5432/?sslmode=disable --query-mode --quer
     --query-type TableCacheHitRatio \
     --query-fields "$FIELDS" \
     --query-interpolate \
+    --query-only-one \
     --query-type-comment "$COMMENT" \
     --package models \
     --out ./ << ENDSQL
@@ -150,6 +151,7 @@ xo pgsql://postgres:password@127.0.0.1:5432/?sslmode=disable \
     --query-mode \
     --query-trim  \
     --query-allow-nulls \
+    --query-only-one \
     --query-type IndexCacheHitRatio \
     --package models \
     --out ./ << ENDSQL
