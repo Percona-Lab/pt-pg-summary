@@ -7,9 +7,9 @@ import (
 	"database/sql"
 )
 
-// IndexCacheHitRatio represents a row from '[custom index_cache_hit_ratio]'.
+// Table cache hit ratio
 type IndexCacheHitRatio struct {
-	Name  Unknown         // name
+	Name  string          // name
 	Ratio sql.NullFloat64 // ratio
 }
 

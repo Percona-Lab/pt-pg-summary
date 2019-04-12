@@ -14,12 +14,15 @@ var TPL = `{{define "report"}}
 {{ template "table_cache_ratios" .TableCacheHitRatio }}
 {{ template "global_wait_events" .GlobalWaitEvents }}
 {{ template "connected_clients" .ConnectedClients }}
+{{ template "counters_header" .Sleep }}
 {{ template "counters" .Counters }}
 {{ template "table_access" .TableAccess }}
+{{ template "settings" .Settings }}
+{{ template "processes" .Processes }}
 {{ end }} {{/* end "report" */}}` +
 	`
 {{ define "port_and_datadir" -}}
-##### --- Database Port and Data_Directory ---- ######
+##### --- Database Port and Data_Directory --- ####
 +----------------------+----------------------------------------------------+
 |         Name         |                      Setting                       |
 +----------------------+----------------------------------------------------+
@@ -39,14 +42,17 @@ var TPL = `{{define "report"}}
 {{ end -}} {{/* end define */}}
 ` +
 	`{{ define "slaves_and_lag" -}}
-##### --- Slave and the lag with Master ---- ######
+##### --- Slave and the lag with Master --- ####
 {{ if . -}}
 +----------------------+----------------------+----------------------------------------------------+
 |  Application Name    |    Client Address    |           State                |      Lag          |
 +----------------------+----------------------+----------------------------------------------------+
-{{ range . -}}
-| {{ printf "%-20s" .ApplicationName }} | {{ printf "%-20s" .ClientAddr }} | {{ printf "%-50s" .State }} |  {{ printf "% 4.2f" .ByteLag }}
-{{ end -}} {{/* end define */}}
+{{ range . -}}` +
+	`| {{ printf "%-20s" .ApplicationName }} ` +
+	`| {{ printf "%-20s" .ClientAddr }} ` +
+	`| {{ printf "%-50s" .State }} ` +
+	`|  {{ printf "% 4.2f" .ByteLag }}` +
+	`{{ end -}} {{/* end define */}}
 +----------------------+----------------------+----------------------------------------------------+
 {{- else -}}
 There are no slave hosts
@@ -54,7 +60,7 @@ There are no slave hosts
 {{ end -}}
 ` +
 	`{{ define "cluster" -}}
-##### --- Cluster Information ---- ######
+##### --- Cluster Information --- ####
 {{ if . -}}
 +------------------------------------------------------------------------------------------------------+
 {{- range . }}                                                                                 
@@ -73,7 +79,7 @@ There is no Cluster info
 {{- end -}} {{/* end define */}}
 ` +
 	`{{ define "databases" -}}
-##### --- Databases ---- ######
+##### --- Databases --- ####
 +----------------------+------------+
 |       Dat Name       |    Size    |
 +----------------------+------------+
@@ -84,7 +90,7 @@ There is no Cluster info
 {{ end }} {{/* end define */}}
 ` +
 	`{{ define "index_cache_ratios" -}}
-##### --- Index Cache Hit Ratios ---- ######
+##### --- Index Cache Hit Ratios --- ####
 {{ if . -}}
 {{ range $dbname, $value := . }}
 Database: {{ $dbname }}
@@ -100,7 +106,7 @@ Database: {{ $dbname }}
 {{ end -}} {{/* end define */}}
 ` +
 	`{{ define "table_cache_ratios" -}}
-##### --- Table Cache Hit Ratios ---- ######
+##### --- Table Cache Hit Ratios --- ####
 {{ if . -}}
 {{ range $dbname, $value := . -}}
 Database: {{ $dbname }}
@@ -116,22 +122,22 @@ Database: {{ $dbname }}
 {{- end -}} {{/* end define */}}
 ` +
 	`{{ define "global_wait_events" -}}
-##### --- List of Wait_events for the entire Cluster - all-databases ---- ######
+##### --- List of Wait_events for the entire Cluster - all-databases --- ####
 {{ if . -}}
-+----------------------+------------+---------+
-|   Wait Event Type    |   Event    |  Count  |
-+----------------------+------------+---------+
-  {{ range . -}}
-  | {{ printf "%-20s" .WaitEventType }} | {{ printf "%5.2f" .WaitEvent }} | {{ printf "% 5d" .Count }} |
-  {{- end -}}
-+----------------------+------------+
++----------------------+----------------------+---------+
+|   Wait Event Type    |        Event         |  Count  |
++----------------------+----------------------+---------+
+{{ range . -}}
+| {{ printf "%-20s" .WaitEventType }} | {{ printf "%-20s" .WaitEvent }} | {{ printf "% 5d" .Count }}   |
+{{ end -}}
++----------------------+----------------------+---------+
 {{ else -}}
   No stats available
 {{ end -}}
 {{- end -}} {{/* end define */}}
 ` +
 	`{{ define "connected_clients" -}}
-##### --- List of users and client_addr or client_hostname connected to --all-databases ---- ######
+##### --- List of users and client_addr or client_hostname connected to --all-databases --- ####
 {{ if . -}}
 +----------------------+------------+---------+----------------------+---------+
 |   Wait Event Type    |        Client        |         State        |  Count  |
@@ -148,6 +154,17 @@ Database: {{ $dbname }}
 {{ end -}}
 {{- end -}} {{/* end define */}}
 ` +
+
+	/*
+	   Counters header
+	*/
+	`{{ define "counters_header" -}}` +
+	"##### --- Counters diff after {{ . }} seconds --- ####\n" +
+	`{{end}}` +
+
+	/*
+	   Counters
+	*/
 	`{{ define "counters" -}}` +
 	"+----------------------" +
 	"+-------------" +
@@ -230,14 +247,59 @@ Database: {{ $dbname }}
 	`{{ end }}` +
 
 	`{{ define "table_access" -}}` +
+
+	"##### --- Table access per database --- ####\n" +
 	`{{ range $dbname, $values := . -}}` +
-	`Database: {{ $dbname }}
-{{ range . -}}
+	"Database: {{ $dbname }}\n" +
+	"+----------------------------------------------------" +
+	"+------" +
+	"+--------------------------------" +
+	"+---------+\n" +
+	"|                       Relname                      " +
+	"| Kind " +
+	"|             Datname            " +
+	"|  Count  |\n" +
+	"+----------------------------------------------------" +
+	"+------" +
+	"+--------------------------------" +
+	"+---------+\n" +
+	`{{ range . -}}
 | {{ printf "%-50s" .Relname }} ` +
-	`| {{ printf "%s" .Relkind }} ` +
+	`|   {{ printf "%1s" .Relkind }}  ` +
 	`| {{ printf "%-30s" .Datname }} ` +
-	`| {{ printf "% 7d" .Count.Int64 }}` +
+	`| {{ printf "% 7d" .Count.Int64 }} ` +
 	"|\n" +
 	"{{ end }}" +
+	"+----------------------------------------------------" +
+	"+------" +
+	"+--------------------------------" +
+	"+---------+\n" +
 	"{{ end -}}" +
+	"{{ end }}" +
+
+	`{{ define "settings" -}}` +
+	/*
+	   Settings
+	*/
+	"##### --- Instance settings --- ####\n" +
+	"                      Setting                 " +
+	"                           Value                     \n" +
+	`{{ range $name, $values := . -}}` +
+	` {{ printf "%-45s" .Name }} ` +
+	`: {{ printf "%-60s" .Setting }}  ` +
+	"\n" +
+	"{{ end }}" +
+	"{{ end }}" +
+	/*
+	   Processes
+	*/
+	`{{ define "processes" -}}` +
+	"##### --- Processes start up command --- ####\n" +
+	"  PID  " +
+	":    Command line\n" +
+	`{{ range $name, $values := . }}` +
+	` {{ printf "% 5d" .PID }} ` +
+	`: {{ printf "%-s" .CmdLine }}  ` +
+	"\n" +
+	"{{ end }}" +
 	"{{ end }}"

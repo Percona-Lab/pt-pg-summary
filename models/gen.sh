@@ -147,12 +147,16 @@ SELECT 'cache hit rate' AS name,
   FROM pg_statio_user_tables
 ENDSQL
 
+FIELDS='Name string,Ratio sql.NullFloat64'
+COMMENT='Table cache hit ratio'
 xo pgsql://postgres:password@127.0.0.1:5432/?sslmode=disable \
     --query-mode \
+    --query-fields "$FIELDS" \
     --query-trim  \
     --query-allow-nulls \
     --query-only-one \
     --query-type IndexCacheHitRatio \
+    --query-type-comment "$COMMENT" \
     --package models \
     --out ./ << ENDSQL
 SELECT 'index hit rate' AS name, 
@@ -253,6 +257,21 @@ xo pgsql://postgres:password@127.0.0.1:5433/?sslmode=disable \
     --package models \
     --out ./ << ENDSQL
 SELECT current_setting('server_version_num') AS version
+ENDSQL
+
+FIELDS='Name string,Setting string'
+COMMENT='Settings'
+xo pgsql://postgres:password@127.0.0.1:5432/?sslmode=disable \
+    --query-mode \
+    --query-fields "$FIELDS" \
+    --query-trim  \
+    --query-allow-nulls \
+    --query-type Setting \
+    --query-type-comment "$COMMENT" \
+    --package models \
+    --out ./ << ENDSQL
+SELECT name, setting 
+  FROM pg_settings
 ENDSQL
 
 if [ $DO_CLEANUP == 1 ]; then 
