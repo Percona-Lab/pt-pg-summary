@@ -295,11 +295,15 @@ Database: {{ $dbname }}
 	*/
 	`{{ define "processes" -}}` +
 	"##### --- Processes start up command --- ####\n" +
+	"{{ if . -}}" +
 	"  PID  " +
 	":    Command line\n" +
 	`{{ range $name, $values := . }}` +
 	` {{ printf "% 5d" .PID }} ` +
 	`: {{ printf "%-s" .CmdLine }}  ` +
 	"\n" +
+	"{{ end }}" +
+	"{{ else }}" +
+	"No postgres process found\n" +
 	"{{ end }}" +
 	"{{ end }}"
