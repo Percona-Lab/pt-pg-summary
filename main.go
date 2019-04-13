@@ -16,6 +16,12 @@ import (
 	_ "github.com/lib/pq"
 )
 
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 type cliOptions struct {
 	app                 *kingpin.Application
 	Config              string
@@ -144,9 +150,9 @@ func buildConnString(opts cliOptions) string {
 }
 
 func parseCommandLineOpts(args []string) (cliOptions, error) {
-	var version, commit string
 	app := kingpin.New("pt-pg-summary", "Percona Toolkit - PostgreSQL Summary")
-	app.Version(fmt.Sprintf("%s version %s, git commit %s", app.Name, version, commit))
+	// version, commit and date will be set at build time by the compiler -ldflags param
+	app.Version(fmt.Sprintf("%s version %s, git commit %s, date: %s", app.Name, version, commit, date))
 	opts := cliOptions{app: app}
 
 	app.Flag("ask-pass", "Prompt for a password when connecting to PostgreSQL").
