@@ -7,15 +7,17 @@ before:
     # you may remove this if you don't need go generate
     - go generate ./...
 builds:
-- env:
-  - CGO_ENABLED=0
-- goos:
-  - linux
-- goarch:
-  - amd64
-- ignore:
-  - goos: darwin
-  - goarch: 386
+  - 
+    binary: pt-pg-summary
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+    ignore:
+      - goos: darwin
+      - goarch: 386
 archive:
   replacements:
     darwin: Darwin
@@ -26,7 +28,7 @@ archive:
 checksum:
   name_template: 'checksums.txt'
 snapshot:
-  name_template: "{{ .Tag }}-next"
+  name_template: "{{ .Tag }}"
 changelog:
   sort: asc
   filters:
