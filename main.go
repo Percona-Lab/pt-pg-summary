@@ -30,7 +30,6 @@ type cliOptions struct {
 	Password            string
 	ReadSamples         string
 	SaveSamples         string
-	Socket              string
 	User                string
 	Databases           []string
 	Port                int
@@ -130,21 +129,11 @@ func buildConnString(opts cliOptions) string {
 	if opts.Password != "" {
 		parts = append(parts, fmt.Sprintf("password=%s", opts.Password))
 	}
-	if opts.Socket == "" {
-		if opts.Host == "" {
-			opts.Host = "127.0.0.1"
-		}
-		parts = append(parts, fmt.Sprintf("host=%s", opts.Host))
-		if opts.Port == 0 {
-			parts = append(parts, fmt.Sprintf("port=%d", opts.Port))
-		}
-	} else {
-		parts = append(parts, fmt.Sprintf("host=%s", opts.Socket))
-	}
 
 	if opts.DisableSSL {
 		parts = append(parts, "sslmode=disable")
 	}
+	parts = append(parts, "dbname=postgres")
 
 	return strings.Join(parts, " ")
 }
@@ -164,12 +153,16 @@ func parseCommandLineOpts(args []string) (cliOptions, error) {
 	app.Flag("defaults-file", "Only read PostgreSQL options from the given file").
 		Hidden().StringVar(&opts.DefaultsFile) // hidden because it is not implemented yet
 	app.Flag("host", "Host to connect to").
+		Short('h').
 		StringVar(&opts.Host)
 	app.Flag("list-encrypted-tables", "Include a list of the encrypted tables in all databases").
 		Hidden().BoolVar(&opts.ListEncryptedTables)
 	app.Flag("password", "Password to use when connecting").
+		Short('W').
 		StringVar(&opts.Password)
 	app.Flag("port", "Port number to use for connection").
+		Short('p').
+		Default("5432").
 		IntVar(&opts.Port)
 	app.Flag("read-samples", "Create a report from the files found in this directory").
 		Hidden().StringVar(&opts.ReadSamples) // hidden because it is not implemented yet
@@ -177,9 +170,8 @@ func parseCommandLineOpts(args []string) (cliOptions, error) {
 		Hidden().StringVar(&opts.SaveSamples) // hidden because it is not implemented yet
 	app.Flag("sleep", "Seconds to sleep when gathering status counters").
 		Default("10").IntVar(&opts.Seconds)
-	app.Flag("socket", "ocket file to use for connection").
-		StringVar(&opts.Socket)
 	app.Flag("username", "User for login if not current user").
+		Short('U').
 		StringVar(&opts.User)
 	app.Flag("disable-ssl", "Diable SSL for the connection").
 		Default("true").BoolVar(&opts.DisableSSL)

@@ -58,6 +58,7 @@ xo pgsql://postgres:password@127.0.0.1:5432/?sslmode=disable \
     --query-fields "$FIELDS" \
     --query-interpolate \
     --query-type-comment "$COMMENT" \
+    --query-allow-nulls \
     --package models \
     --out ./ << ENDSQL
 SELECT usename, now() AS "Time", 
@@ -196,10 +197,13 @@ xo pgsql://postgres:password@127.0.0.1:5432/?sslmode=disable \
 GROUP BY 1,2,3,4,5
 ENDSQL
 
+COMMENT="Connected clients list"
 xo pgsql://postgres:password@127.0.0.1:5432/?sslmode=disable \
     --query-mode \
     --query-trim \
     --query-type ConnectedClients \
+    --query-type-comment "$COMMENT" \
+    --query-allow-nulls \
     --query-interpolate \
     --package models \
     --out ./ << ENDSQL
