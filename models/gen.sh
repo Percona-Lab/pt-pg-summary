@@ -161,8 +161,12 @@ xo pgsql://postgres:password@127.0.0.1:5432/?sslmode=disable \
     --package models \
     --out ./ << ENDSQL
 SELECT 'index hit rate' AS name, 
-       (sum(idx_blks_hit)) / sum(idx_blks_hit + idx_blks_read) AS ratio 
-  FROM pg_statio_user_indexes
+       CASE WHEN sum(idx_blks_hit) IS NULL 
+         THEN 0 
+         ELSE (sum(idx_blks_hit)) / sum(idx_blks_hit + idx_blks_read) 
+       END AS ratio 
+  FROM pg_statio_user_indexes 
+ WHERE (idx_blks_hit + idx_blks_read) > 0
 ENDSQL
 
 xo pgsql://postgres:password@127.0.0.1:5432/?sslmode=disable \

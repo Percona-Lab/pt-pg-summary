@@ -19,8 +19,12 @@ func GetIndexCacheHitRatio(db XODB) (*IndexCacheHitRatio, error) {
 
 	// sql query
 	const sqlstr = `SELECT 'index hit rate' AS name, ` +
-		`(sum(idx_blks_hit)) / sum(idx_blks_hit + idx_blks_read) AS ratio ` +
-		`FROM pg_statio_user_indexes`
+		`CASE WHEN sum(idx_blks_hit) IS NULL ` +
+		`THEN 0 ` +
+		`ELSE (sum(idx_blks_hit)) / sum(idx_blks_hit + idx_blks_read) ` +
+		`END AS ratio ` +
+		`FROM pg_statio_user_indexes ` +
+		`WHERE (idx_blks_hit + idx_blks_read) > 0`
 
 	// run query
 	XOLog(sqlstr)
