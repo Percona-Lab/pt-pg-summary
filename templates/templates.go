@@ -9,7 +9,7 @@ var TPL = `{{define "report"}}
   {{ template "slaves_and_lag" .SlaveHosts10 }}
 {{- end }}
 {{ template "cluster" .ClusterInfo }}
-{{ template "databases" .Databases }}
+{{ template "databases" .AllDatabases }}
 {{ template "index_cache_ratios" .IndexCacheHitRatio }}
 {{ template "table_cache_ratios" .TableCacheHitRatio }}
 {{ template "global_wait_events" .GlobalWaitEvents }}

@@ -3,7 +3,6 @@ package pginfo
 import (
 	"fmt"
 	"regexp"
-	"strings"
 	"time"
 
 	"github.com/Percona-Lab/pt-pg-summary/models"
@@ -13,16 +12,19 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// Process contains PostgreSQL process information
 type Process struct {
 	PID     int32
 	CmdLine string
 }
 
+// PGInfo has exported fields containing the data collected.
+// Fields are exported to be able to use them when printing the templates
 type PGInfo struct {
 	ClusterInfo        []*models.ClusterInfo
 	ConnectedClients   []*models.ConnectedClients
 	DatabaseWaitEvents []*models.DatabaseWaitEvents
-	Databases          []*models.Databases
+	AllDatabases       []*models.Databases
 	GlobalWaitEvents   []*models.GlobalWaitEvents
 	PortAndDatadir     *models.PortAndDatadir
 	SlaveHosts96       []*models.SlaveHosts96
@@ -33,7 +35,6 @@ type PGInfo struct {
 	IndexCacheHitRatio map[string]*models.IndexCacheHitRatio // Indexes cache hit ratio per database
 	TableCacheHitRatio map[string]*models.TableCacheHitRatio // Tables cache hit ratio per database
 	TableAccess        map[string][]*models.TableAccess      // Table access per database
-	AllDatabases       bool
 	ServerVersion      *version.Version
 	Sleep              int
 	Processes          []Process
@@ -46,24 +47,38 @@ type PGInfo struct {
 	logger    *logrus.Logger
 }
 
+// New returns a new PGInfo instance with a local logger instance
 func New(db models.XODB, databases []string, sleep int) (*PGInfo, error) {
+	return new(db, databases, sleep, logrus.New())
+}
+
+// NewWithLogger returns a new PGInfo instance with an external logger instance
+func NewWithLogger(db models.XODB, databases []string, sleep int, l *logrus.Logger) (*PGInfo, error) {
+	return new(db, databases, sleep, l)
+}
+
+func new(db models.XODB, databases []string, sleep int, logger *logrus.Logger) (*PGInfo, error) {
 	var err error
 	info := &PGInfo{
+		databases:          databases,
 		Counters:           make(map[models.Name][]*models.Counters),
 		TableAccess:        make(map[string][]*models.TableAccess),
 		TableCacheHitRatio: make(map[string]*models.TableCacheHitRatio),
 		IndexCacheHitRatio: make(map[string]*models.IndexCacheHitRatio),
 		Sleep:              sleep,
-		logger:             logrus.New(),
+		logger:             logger,
 	}
-	info.logger.SetLevel(logrus.ErrorLevel)
 
-	if info.Databases, err = models.GetDatabases(db); err != nil {
+	if info.AllDatabases, err = models.GetDatabases(db); err != nil {
 		return nil, errors.Wrap(err, "Cannot get databases list")
+	}
+	info.logger.Debug("All databases list")
+	for i, db := range info.AllDatabases {
+		logger.Debugf("% 5d: %s", i, db.Datname)
 	}
 
 	if len(databases) < 1 {
-		info.databases = make([]string, 0, len(info.Databases))
+		info.databases = make([]string, 0, len(info.AllDatabases))
 		allDatabases, err := models.GetAllDatabases(db)
 		if err != nil {
 			return nil, errors.Wrap(err, "cannot get the list of all databases")
@@ -72,6 +87,7 @@ func New(db models.XODB, databases []string, sleep int) (*PGInfo, error) {
 			info.databases = append(info.databases, string(database.Datname))
 		}
 	} else {
+		info.databases = make([]string, len(databases))
 		copy(info.databases, databases)
 	}
 	info.logger.Debugf("Will collect info for these databases: %v", info.databases)
@@ -89,10 +105,12 @@ func New(db models.XODB, databases []string, sleep int) (*PGInfo, error) {
 	return info, nil
 }
 
+// DatabaseNames returns the list of the database names for which information will be collected
 func (i *PGInfo) DatabaseNames() []string {
 	return i.databases
 }
 
+// CollectPerDatabaseInfo collects information for a specific database
 func (i *PGInfo) CollectPerDatabaseInfo(db models.XODB, dbName string) (err error) {
 	i.logger.Info("Collecting Table Access information")
 	if i.TableAccess[dbName], err = models.GetTableAccesses(db); err != nil {
@@ -112,6 +130,7 @@ func (i *PGInfo) CollectPerDatabaseInfo(db models.XODB, dbName string) (err erro
 	return nil
 }
 
+// CollectGlobalInfo collects global information
 func (i *PGInfo) CollectGlobalInfo(db models.XODB) []error {
 	errs := make([]error, 0)
 	var err error
@@ -119,6 +138,7 @@ func (i *PGInfo) CollectGlobalInfo(db models.XODB) []error {
 	version10, _ := version.NewVersion("10.0.0")
 
 	ch := make(chan interface{}, 2)
+	i.logger.Info("Collecting global counters (1st pass)")
 	getCounters(db, ch)
 	c1, err := waitForCounters(ch)
 	if err != nil {
@@ -132,6 +152,7 @@ func (i *PGInfo) CollectGlobalInfo(db models.XODB) []error {
 	go func() {
 		i.logger.Infof("Waiting %d seconds to read  counters", i.Sleep)
 		time.Sleep(time.Duration(i.Sleep) * time.Second)
+		i.logger.Info("Collecting global counters (2nd pass)")
 		getCounters(db, ch)
 	}()
 
@@ -200,13 +221,16 @@ func (i *PGInfo) CollectGlobalInfo(db models.XODB) []error {
 		errs = append(errs, errors.Wrap(err, "Cannot collect processes information"))
 	}
 
+	i.logger.Info("Finished collecting global information")
 	return errs
 }
 
+// SetLogger sets an external logger instance
 func (i *PGInfo) SetLogger(l *logrus.Logger) {
 	i.logger = l
 }
 
+// SetLogLevel changes the current log level
 func (i *PGInfo) SetLogLevel(level logrus.Level) {
 	i.logger.SetLevel(level)
 }
@@ -290,7 +314,8 @@ func (i *PGInfo) collectProcesses() error {
 		if err != nil {
 			continue
 		}
-		if strings.Contains(cmdLine, "/postgres") {
+		match, _ := regexp.MatchString("^.*?/postgres\\s.*$", cmdLine)
+		if match {
 			i.Processes = append(i.Processes, Process{PID: proc.Pid, CmdLine: cmdLine})
 		}
 	}

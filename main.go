@@ -48,53 +48,62 @@ func main() {
 		fmt.Printf("Cannot parse command line arguments: %s", err)
 		os.Exit(1)
 	}
+	logger := logrus.New()
+	if opts.Verbose {
+		logger.SetLevel(logrus.InfoLevel)
+	}
+	if opts.Debug {
+		logger.SetLevel(logrus.DebugLevel)
+	}
 
-	connStr := buildConnString(opts)
+	connStr := buildConnString(opts, "postgres")
+	fmt.Printf("connstring: %s\n", connStr)
+	logger.Infof("Connecting to the database server using: %s", safeConnString(opts, "postgres"))
+
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
-		fmt.Printf("Cannot connect to the database: %s\n", err)
+		logger.Errorf("Cannot connect to the database: %s\n", err)
 		opts.app.Usage(os.Args[1:])
 		os.Exit(1)
 	}
 
 	if err := db.Ping(); err != nil {
-		fmt.Printf("Cannot connect to the database: %s\n", err)
+		logger.Errorf("Cannot connect to the database using %q: %s\n", safeConnString(opts, "postgres"), err)
 		opts.app.Usage(os.Args[1:])
 		os.Exit(1)
 	}
+	logger.Infof("Connection OK")
 
-	info, err := pginfo.New(db, opts.Databases, opts.Seconds)
+	info, err := pginfo.NewWithLogger(db, opts.Databases, opts.Seconds, logger)
 	if err != nil {
-		log.Fatal(err)
-	}
-	if opts.Verbose {
-		info.SetLogLevel(logrus.InfoLevel)
-	}
-	if opts.Debug {
-		info.SetLogLevel(logrus.DebugLevel)
+		log.Fatalf("Cannot create a data collector instance: %s", err)
 	}
 
+	logger.Info("Getting global information")
 	errs := info.CollectGlobalInfo(db)
 	if len(errs) > 0 {
-		log.Println("Cannot collect info")
+		logger.Errorf("Cannot collect info")
 		for _, err := range errs {
-			log.Println(err)
+			logger.Error(err)
 		}
 	}
 
+	logger.Info("Collecting per database information")
+	logger.Debugf("Will collect information for these databases: (%T), %v", info.DatabaseNames(), info.DatabaseNames())
 	for _, dbName := range info.DatabaseNames() {
-		dbConnStr := fmt.Sprintf("%s database=%s", connStr, dbName)
+		dbConnStr := buildConnString(opts, dbName)
 		conn, err := sql.Open("postgres", dbConnStr)
+		logger.Infof("Connecting to the %q database", dbName)
 		if err != nil {
-			log.Errorf("Cannot connect to the %s database: %s", dbName, err)
+			logger.Errorf("Cannot connect to the %s database: %s", dbName, err)
 			continue
 		}
 		if err := db.Ping(); err != nil {
-			log.Errorf("Cannot connect to the %s database: %s", dbName, err)
+			logger.Errorf("Cannot connect to the %s database: %s", dbName, err)
 			continue
 		}
 		if err := info.CollectPerDatabaseInfo(conn, dbName); err != nil {
-			log.Errorf("Cannot collect information for the %s database: %s", dbName, err)
+			logger.Errorf("Cannot collect information for the %s database: %s", dbName, err)
 		}
 		conn.Close()
 	}
@@ -121,19 +130,54 @@ func funcsMap() template.FuncMap {
 	}
 }
 
-func buildConnString(opts cliOptions) string {
+func buildConnString(opts cliOptions, dbName string) string {
 	parts := []string{}
+	if opts.Host != "" {
+		parts = append(parts, fmt.Sprintf("host=%s", opts.Host))
+	}
+	if opts.Port != 0 {
+		parts = append(parts, fmt.Sprintf("port=%d", opts.Port))
+	}
 	if opts.User != "" {
 		parts = append(parts, fmt.Sprintf("user=%s", opts.User))
 	}
 	if opts.Password != "" {
 		parts = append(parts, fmt.Sprintf("password=%s", opts.Password))
 	}
-
 	if opts.DisableSSL {
 		parts = append(parts, "sslmode=disable")
 	}
-	parts = append(parts, "dbname=postgres")
+	if dbName == "" {
+		dbName = "postgres"
+	}
+	parts = append(parts, fmt.Sprintf("dbname=%s", dbName))
+
+	return strings.Join(parts, " ")
+}
+
+// build the same connection string as buildConnString but the password is hidden so
+// we can display this in the logs
+func safeConnString(opts cliOptions, dbName string) string {
+	parts := []string{}
+	if opts.Host != "" {
+		parts = append(parts, fmt.Sprintf("host=%s", opts.Host))
+	}
+	if opts.Port != 0 {
+		parts = append(parts, fmt.Sprintf("port=%d", opts.Port))
+	}
+	if opts.User != "" {
+		parts = append(parts, fmt.Sprintf("user=%s", opts.User))
+	}
+	if opts.Password != "" {
+		parts = append(parts, "password=******")
+	}
+	if opts.DisableSSL {
+		parts = append(parts, "sslmode=disable")
+	}
+	if dbName == "" {
+		dbName = "postgres"
+	}
+	parts = append(parts, fmt.Sprintf("dbname=%s", dbName))
 
 	return strings.Join(parts, " ")
 }
@@ -180,5 +224,12 @@ func parseCommandLineOpts(args []string) (cliOptions, error) {
 	app.Flag("debug", "Show debug information in the logs").
 		Default("false").BoolVar(&opts.Debug)
 	_, err := app.Parse(args)
+
+	dbs := []string{}
+	for _, databases := range opts.Databases {
+		ds := strings.Split(databases, ",")
+		dbs = append(dbs, ds...)
+	}
+	opts.Databases = dbs
 	return opts, err
 }

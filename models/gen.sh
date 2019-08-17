@@ -1,12 +1,17 @@
 #!/bin/bash
+USERNAME=postgres
+PASSWORD=root
+PORT9=6432
+PORT10=6433
 DO_CLEANUP=0
+
 if [ ! "$(docker ps -q -f name=pt-pg-summary_postgres9_1)" ]; then
     DO_CLEANUP=1
     docker-compose up -d --force-recreate
     sleep 20
 fi
 
-xo pgsql://postgres:password@127.0.0.1:5432/?sslmode=disable \
+xo pgsql://${USERNAME}:${PASSWORD}@127.0.0.1:${PORT9}/?sslmode=disable \
     --query-mode \
     --query-trim  \
     --query-interpolate \
@@ -18,7 +23,7 @@ SELECT datname
  WHERE datistemplate = false
 ENDSQL
 
-xo pgsql://postgres:password@127.0.0.1:5432/?sslmode=disable \
+xo pgsql://${USERNAME}:${PASSWORD}@127.0.0.1:${PORT9}/?sslmode=disable \
     --query-mode \
     --query-trim \
     --query-interpolate \
@@ -33,7 +38,7 @@ SELECT name,
 ENDSQL
 
 COMMENT="Tablespaces"
-xo pgsql://postgres:password@127.0.0.1:5432/?sslmode=disable \
+xo pgsql://${USERNAME}:${PASSWORD}@127.0.0.1:${PORT9}/?sslmode=disable \
     --query-mode \
     --query-trim  \
     --query-interpolate \
@@ -50,7 +55,7 @@ ENDSQL
 
 FIELDS='Usename string,Time time.Time,ClientAddr string,ClientHostname sql.NullString,Version string,Started time.Time,IsSlave bool'
 COMMENT='Cluster info'
-xo pgsql://postgres:password@127.0.0.1:5432/?sslmode=disable \
+xo pgsql://${USERNAME}:${PASSWORD}@127.0.0.1:${PORT9}/?sslmode=disable \
     --query-mode \
     --query-trim  \
     -k smart \
@@ -72,7 +77,7 @@ SELECT usename, now() AS "Time",
 ENDSQL
 
 COMMENT="Databases"
-xo pgsql://postgres:password@127.0.0.1:5432/?sslmode=disable \
+xo pgsql://${USERNAME}:${PASSWORD}@127.0.0.1:${PORT9}/?sslmode=disable \
     --query-mode \
     --query-trim  \
     --query-interpolate \
@@ -84,7 +89,7 @@ SELECT datname, pg_size_pretty(pg_database_size(datname))
   FROM pg_stat_database
 ENDSQL
  
-xo pgsql://postgres:password@127.0.0.1:5432/?sslmode=disable \
+xo pgsql://${USERNAME}:${PASSWORD}@127.0.0.1:${PORT9}/?sslmode=disable \
     --query-mode \
     --query-trim  \
     --query-interpolate \
@@ -96,7 +101,7 @@ xo pgsql://postgres:password@127.0.0.1:5432/?sslmode=disable \
 GROUP BY 1
 ENDSQL
  
-xo pgsql://postgres:password@127.0.0.1:5432/?sslmode=disable \
+xo pgsql://${USERNAME}:${PASSWORD}@127.0.0.1:${PORT9}/?sslmode=disable \
     --query-mode \
     --query-interpolate \
     --query-trim  \
@@ -113,7 +118,7 @@ ENDSQL
 
 FIELDS='Relname string, Relkind string,Datname string,Count sql.NullInt64'
 COMMENT='Table Access'
-xo pgsql://postgres:password@127.0.0.1:5432/?sslmode=disable \
+xo pgsql://${USERNAME}:${PASSWORD}@127.0.0.1:${PORT9}/?sslmode=disable \
     --query-mode \
     --query-trim  \
     --query-type TableAccess \
@@ -135,7 +140,7 @@ ENDSQL
 
 FIELDS='Name string,Ratio sql.NullFloat64'
 COMMENT='Table cache hit ratio'
-xo pgsql://postgres:password@127.0.0.1:5432/?sslmode=disable --query-mode --query-trim  \
+xo pgsql://${USERNAME}:${PASSWORD}@127.0.0.1:${PORT9}/?sslmode=disable --query-mode --query-trim  \
     --query-type TableCacheHitRatio \
     --query-fields "$FIELDS" \
     --query-interpolate \
@@ -150,7 +155,7 @@ ENDSQL
 
 FIELDS='Name string,Ratio sql.NullFloat64'
 COMMENT='Table cache hit ratio'
-xo pgsql://postgres:password@127.0.0.1:5432/?sslmode=disable \
+xo pgsql://${USERNAME}:${PASSWORD}@127.0.0.1:${PORT9}/?sslmode=disable \
     --query-mode \
     --query-fields "$FIELDS" \
     --query-trim  \
@@ -169,7 +174,7 @@ SELECT 'index hit rate' AS name,
  WHERE (idx_blks_hit + idx_blks_read) > 0
 ENDSQL
 
-xo pgsql://postgres:password@127.0.0.1:5432/?sslmode=disable \
+xo pgsql://${USERNAME}:${PASSWORD}@127.0.0.1:${PORT9}/?sslmode=disable \
     --query-mode \
     --query-trim  \
     --query-type GlobalWaitEvents \
@@ -182,7 +187,7 @@ xo pgsql://postgres:password@127.0.0.1:5432/?sslmode=disable \
 GROUP BY 1,2
 ENDSQL
 
-xo pgsql://postgres:password@127.0.0.1:5432/?sslmode=disable \
+xo pgsql://${USERNAME}:${PASSWORD}@127.0.0.1:${PORT9}/?sslmode=disable \
     --query-mode \
     --query-trim  \
     --query-interpolate \
@@ -202,7 +207,7 @@ GROUP BY 1,2,3,4,5
 ENDSQL
 
 COMMENT="Connected clients list"
-xo pgsql://postgres:password@127.0.0.1:5432/?sslmode=disable \
+xo pgsql://${USERNAME}:${PASSWORD}@127.0.0.1:${PORT9}/?sslmode=disable \
     --query-mode \
     --query-trim \
     --query-type ConnectedClients \
@@ -221,7 +226,7 @@ ORDER BY 4 desc,3
 ENDSQL
 
 # Postgre 9
-xo pgsql://postgres:password@127.0.0.1:5432/?sslmode=disable \
+xo pgsql://${USERNAME}:${PASSWORD}@127.0.0.1:${PORT9}/?sslmode=disable \
     --query-mode \
     --query-trim  \
     --query-type SlaveHosts96 \
@@ -239,7 +244,7 @@ SELECT application_name, client_addr, state, sent_offset - (replay_offset - (sen
 ENDSQL
 
 # Postgre 10
-xo pgsql://postgres:password@127.0.0.1:5433/?sslmode=disable \
+xo pgsql://${USERNAME}:${PASSWORD}@127.0.0.1:${PORT10}/?sslmode=disable \
     --query-mode \
     --query-trim \
     --query-interpolate \
@@ -257,7 +262,7 @@ SELECT application_name, client_addr, state, sent_offset - (replay_offset - (sen
 ENDSQL
 
 
-xo pgsql://postgres:password@127.0.0.1:5433/?sslmode=disable \
+xo pgsql://${USERNAME}:${PASSWORD}@127.0.0.1:${PORT10}/?sslmode=disable \
     --query-mode \
     --query-trim \
     --query-only-one \
@@ -269,7 +274,7 @@ ENDSQL
 
 FIELDS='Name string,Setting string'
 COMMENT='Settings'
-xo pgsql://postgres:password@127.0.0.1:5432/?sslmode=disable \
+xo pgsql://${USERNAME}:${PASSWORD}@127.0.0.1:${PORT9}/?sslmode=disable \
     --query-mode \
     --query-fields "$FIELDS" \
     --query-trim  \
