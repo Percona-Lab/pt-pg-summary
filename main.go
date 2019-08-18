@@ -10,6 +10,7 @@ import (
 	"github.com/Percona-Lab/pt-pg-summary/internal/pginfo"
 	"github.com/Percona-Lab/pt-pg-summary/templates"
 	"github.com/alecthomas/kingpin"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 
@@ -22,21 +23,24 @@ var (
 	date    = "unknown"
 )
 
+type connOpts struct {
+	Host       string
+	Port       int
+	User       string
+	Password   string
+	DisableSSL bool
+}
 type cliOptions struct {
 	app                 *kingpin.Application
+	connOpts            connOpts
 	Config              string
 	DefaultsFile        string
-	Host                string
-	Password            string
 	ReadSamples         string
 	SaveSamples         string
-	User                string
 	Databases           []string
-	Port                int
 	Seconds             int
 	AllDatabases        bool
 	AskPass             bool
-	DisableSSL          bool
 	ListEncryptedTables bool
 	Verbose             bool
 	Debug               bool
@@ -56,19 +60,12 @@ func main() {
 		logger.SetLevel(logrus.DebugLevel)
 	}
 
-	connStr := buildConnString(opts, "postgres")
-	fmt.Printf("connstring: %s\n", connStr)
-	logger.Infof("Connecting to the database server using: %s", safeConnString(opts, "postgres"))
+	dsn := buildConnString(opts.connOpts, "postgres")
+	logger.Infof("Connecting to the database server using: %s", safeConnString(opts.connOpts, "postgres"))
 
-	db, err := sql.Open("postgres", connStr)
+	db, err := connect(dsn)
 	if err != nil {
 		logger.Errorf("Cannot connect to the database: %s\n", err)
-		opts.app.Usage(os.Args[1:])
-		os.Exit(1)
-	}
-
-	if err := db.Ping(); err != nil {
-		logger.Errorf("Cannot connect to the database using %q: %s\n", safeConnString(opts, "postgres"), err)
 		opts.app.Usage(os.Args[1:])
 		os.Exit(1)
 	}
@@ -91,14 +88,10 @@ func main() {
 	logger.Info("Collecting per database information")
 	logger.Debugf("Will collect information for these databases: (%T), %v", info.DatabaseNames(), info.DatabaseNames())
 	for _, dbName := range info.DatabaseNames() {
-		dbConnStr := buildConnString(opts, dbName)
-		conn, err := sql.Open("postgres", dbConnStr)
+		dsn := buildConnString(opts.connOpts, dbName)
 		logger.Infof("Connecting to the %q database", dbName)
+		conn, err := connect(dsn)
 		if err != nil {
-			logger.Errorf("Cannot connect to the %s database: %s", dbName, err)
-			continue
-		}
-		if err := db.Ping(); err != nil {
 			logger.Errorf("Cannot connect to the %s database: %s", dbName, err)
 			continue
 		}
@@ -119,6 +112,18 @@ func main() {
 
 }
 
+func connect(dsn string) (*sql.DB, error) {
+	db, err := sql.Open("postgres", dsn)
+	if err != nil {
+		return nil, errors.Wrap(err, "cannot connect to the database")
+	}
+
+	if err := db.Ping(); err != nil {
+		return nil, errors.Wrap(err, "cannot connect to the database")
+	}
+	return db, nil
+}
+
 func funcsMap() template.FuncMap {
 	return template.FuncMap{
 		"trim": func(s string, size int) string {
@@ -130,7 +135,7 @@ func funcsMap() template.FuncMap {
 	}
 }
 
-func buildConnString(opts cliOptions, dbName string) string {
+func buildConnString(opts connOpts, dbName string) string {
 	parts := []string{}
 	if opts.Host != "" {
 		parts = append(parts, fmt.Sprintf("host=%s", opts.Host))
@@ -157,7 +162,7 @@ func buildConnString(opts cliOptions, dbName string) string {
 
 // build the same connection string as buildConnString but the password is hidden so
 // we can display this in the logs
-func safeConnString(opts cliOptions, dbName string) string {
+func safeConnString(opts connOpts, dbName string) string {
 	parts := []string{}
 	if opts.Host != "" {
 		parts = append(parts, fmt.Sprintf("host=%s", opts.Host))
@@ -198,16 +203,16 @@ func parseCommandLineOpts(args []string) (cliOptions, error) {
 		Hidden().StringVar(&opts.DefaultsFile) // hidden because it is not implemented yet
 	app.Flag("host", "Host to connect to").
 		Short('h').
-		StringVar(&opts.Host)
+		StringVar(&opts.connOpts.Host)
 	app.Flag("list-encrypted-tables", "Include a list of the encrypted tables in all databases").
 		Hidden().BoolVar(&opts.ListEncryptedTables)
 	app.Flag("password", "Password to use when connecting").
 		Short('W').
-		StringVar(&opts.Password)
+		StringVar(&opts.connOpts.Password)
 	app.Flag("port", "Port number to use for connection").
 		Short('p').
 		Default("5432").
-		IntVar(&opts.Port)
+		IntVar(&opts.connOpts.Port)
 	app.Flag("read-samples", "Create a report from the files found in this directory").
 		Hidden().StringVar(&opts.ReadSamples) // hidden because it is not implemented yet
 	app.Flag("save-samples", "Save the data files used to generate the summary in this directory").
@@ -216,9 +221,9 @@ func parseCommandLineOpts(args []string) (cliOptions, error) {
 		Default("10").IntVar(&opts.Seconds)
 	app.Flag("username", "User for login if not current user").
 		Short('U').
-		StringVar(&opts.User)
+		StringVar(&opts.connOpts.User)
 	app.Flag("disable-ssl", "Diable SSL for the connection").
-		Default("true").BoolVar(&opts.DisableSSL)
+		Default("true").BoolVar(&opts.connOpts.DisableSSL)
 	app.Flag("verbose", "Show verbose log").
 		Default("false").BoolVar(&opts.Verbose)
 	app.Flag("debug", "Show debug information in the logs").
