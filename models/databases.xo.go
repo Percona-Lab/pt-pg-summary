@@ -35,6 +35,7 @@ func GetDatabases(db XODB) ([]*Databases, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		res = append(res, &d)
 	}
 
