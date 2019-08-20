@@ -211,7 +211,6 @@ func parseCommandLineOpts(args []string) (cliOptions, error) {
 		StringVar(&opts.connOpts.Password)
 	app.Flag("port", "Port number to use for connection").
 		Short('p').
-		Default("5432").
 		IntVar(&opts.connOpts.Port)
 	app.Flag("read-samples", "Create a report from the files found in this directory").
 		Hidden().StringVar(&opts.ReadSamples) // hidden because it is not implemented yet

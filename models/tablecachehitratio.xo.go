@@ -19,7 +19,11 @@ func GetTableCacheHitRatio(db XODB) (*TableCacheHitRatio, error) {
 
 	// sql query
 	var sqlstr = `SELECT 'cache hit rate' AS name, ` +
-		`sum(heap_blks_hit) / (sum(heap_blks_hit) + sum(heap_blks_read)) AS ratio ` +
+		`CASE WHEN (sum(heap_blks_read) + sum(idx_blks_hit)) > 0 ` +
+		`THEN ` +
+		`sum(heap_blks_hit) / (sum(heap_blks_hit) + sum(heap_blks_read)) ` +
+		`ELSE 0 ` +
+		`END  AS ratio ` +
 		`FROM pg_statio_user_tables`
 
 	// run query
